@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>語彙テスト（生徒用）</title>
+<style>
+  body{font-family:sans-serif;text-align:center;background:#eef8ff;padding:30px}
+  h1{color:#333}
+  #quizWord{font-size:2em;margin:20px}
+  input{font-size:1.1em;padding:10px;width:60%;box-sizing:border-box}
+  button{padding:10px 18px;margin:10px}
+  .hidden{display:none}
+  ul{list-style:none;padding:0}
+</style>
+</head>
+<body>
+  <h1>語彙テスト（生徒用）</h1>
+
+  <div id="selectArea">
+    <p>単元を選んでください：</p>
+    <select id="unitSelect"></select><br>
+    <button id="startBtn">テスト開始</button>
+  </div>
+
+  <div id="quizArea" class="hidden">
+    <p id="progress"></p>
+    <div id="quizWord"></div>
+    <input id="answerInput" placeholder="英語を入力して Enter">
+    <div id="result" style="height:1.2em;margin-top:8px"></div>
+    <div>
+      <button id="endBtn">終了</button>
+    </div>
+  </div>
+
+  <div id="finishArea" class="hidden">
+    <h2>テスト終了</h2>
+    <p id="summary"></p>
+    <div id="wrongSection"></div>
+    <button id="retryBtn" class="hidden">間違えた問題だけ再挑戦</button>
+    <button onclick="location.reload()">最初に戻る</button>
+  </div>
+
+<script>
+/*
+仕様確認（厳密）：
+- units は localStorage の { unitName: { "日本語": "english", ... }, ... }
+- 出題は「日本語」を表示、正答はその value（英語）
+- Enter1回 -> 正誤表示（waitingNext = true）
+- Enter2回 -> 次の問題（waitingNext = false）
+- 間違いは wrongList に日本語/英語の配列で保存し、最後に再挑戦可能
+*/
+
+const units = JSON.parse(localStorage.getItem("units") || "{}");
+const unitSelect = document.getElementById("unitSelect");
+const startBtn = document.getElementById("startBtn");
+const selectArea = document.getElementById("selectArea");
+const quizArea = document.getElementById("quizArea");
+const quizWord = document.getElementById("quizWord");
+const answerInput = document.getElementById("answerInput");
+const resultDiv = document.getElementById("result");
+const progress = document.getElementById("progress");
+const endBtn = document.getElementById("endBtn");
+const finishArea = document.getElementById("finishArea");
+const summary = document.getElementById("summary");
+const wrongSection = document.getElementById("wrongSection");
+const retryBtn = document.getElementById("retryBtn");
+
+let pool = [];          // [ [jp,en], ... ] 出題プール
+let wrongList = [];     // 間違えた問題（再挑戦用）
+let total = 0;
+let correct = 0;
+let waitingNext = false;
+let inRetry = false;
+
+function initUnitSelect(){
+  unitSelect.innerHTML = "";
+  Object.keys(units).forEach(name => {
+    const o = document.createElement("option");
+    o.value = name; o.textContent = name;
+    unitSelect.appendChild(o);
+  });
+  if(Object.keys(units).length === 0){
+    const o = document.createElement("option");
+    o.value = ""; o.textContent = "（単元がありません。教師用ページで追加してください）";
+    unitSelect.appendChild(o);
+  }
+}
+
+startBtn.addEventListener("click", ()=>{
+  const name = unitSelect.value;
+  if(!name) return alert("単元を選んでください（教師側で単元を登録してください）。");
+  // pool をシャッフルして作成
+  pool = Object.entries(units[name]).map(([jp,en])=>[jp,en]);
+  total = pool.length;
+  correct = 0;
+  wrongList = [];
+  inRetry = false;
+  startQuiz();
+});
+
+function startQuiz(){
+  selectArea.classList.add("hidden");
+  quizArea.classList.remove("hidden");
+  finishArea.classList.add("hidden");
+  nextQuestion();
+}
+
+function nextQuestion(){
+  if(pool.length === 0){
+    // すべて出題済み
+    finishTest();
+    return;
+  }
+  // ランダムに1つ取り出す
+  const idx = Math.floor(Math.random() * pool.length);
+  const item = pool.splice(idx,1)[0];
+  // item = [jp,en]
+  quizWord.textContent = item[0]; // **日本語を表示**
+  // store current for check
+  current = item;
+  resultDiv.textContent = "";
+  answerInput.value = "";
+  answerInput.focus();
+  waitingNext = false;
+  updateProgress();
+}
+
+function updateProgress(){
+  const asked = total - pool.length;
+  progress.textContent = `${asked}/${total} 問`;
+}
+
+answerInput.addEventListener("keydown", (e)=>{
+  if(e.key !== "Enter") return;
+  // Enter 押下時の挙動
+  if(!waitingNext){
+    // 1回目: 解答を判定して表示（次に進む待ち状態に）
+    checkAnswer();
+    waitingNext = true;
+  } else {
+    // 2回目: 次の問題へ
+    nextQuestion();
+  }
+});
+
+function normalize(s){ return String(s||"").trim().toLowerCase(); }
+
+function checkAnswer(){
+  const user = normalize(answerInput.value);
+  const correctAns = normalize(current[1]); // 英語（正答）
+  if(user === "" ){
+    // 空入力は「空で回答した」とみなして不正解扱い
+    resultDiv.textContent = `❌ 入力が空です。正答：${current[1]}`;
+    resultDiv.style.color = "red";
+    wrongList.push(current);
+    return;
+  }
+  if(user === correctAns){
+    resultDiv.textContent = "✅ 正解！（Enterで次へ）";
+    resultDiv.style.color = "green";
+    correct++;
+  } else {
+    resultDiv.textContent = `❌ 不正解（正答：${current[1]}）（Enterで次へ）`;
+    resultDiv.style.color = "red";
+    wrongList.push(current);
+  }
+}
+
+endBtn.addEventListener("click", ()=>{
+  // 途中終了して結果画面へ
+  pool = []; // force end
+  finishTest();
+});
+
+function finishTest(){
+  quizArea.classList.add("hidden");
+  finishArea.classList.remove("hidden");
+
+  const correctCount = correct;
+  const totalQuestions = total;
+  const rate = totalQuestions === 0 ? 0 : ((correctCount/totalQuestions)*100).toFixed(1);
+  summary.textContent = `正答数：${correctCount} / ${totalQuestions} （${rate}%）`;
+
+  // 間違いリストの表示
+  wrongSection.innerHTML = "";
+  if(wrongList.length === 0){
+    wrongSection.innerHTML = "<p>おめでとう！間違いはありませんでした。</p>";
+    retryBtn.classList.add("hidden");
+  } else {
+    const h = document.createElement("div");
+    h.innerHTML = `<p>間違えた問題（${wrongList.length}問）：</p>`;
+    const ul = document.createElement("ul");
+    wrongList.forEach(([jp,en])=>{
+      const li = document.createElement("li");
+      li.textContent = `${jp} → ${en}`;
+      ul.appendChild(li);
+    });
+    h.appendChild(ul);
+    wrongSection.appendChild(h);
+    retryBtn.classList.remove("hidden");
+  }
+  // retryBtnが押されたら、wrongListを再挑戦 pool にする
+  retryBtn.onclick = ()=>{
+    if(wrongList.length === 0) return alert("再挑戦する間違いはありません。");
+    // 再挑戦モードへ
+    pool = wrongList.slice(); // shallow copy
+    total = pool.length;
+    correct = 0;
+    wrongList = [];
+    inRetry = true;
+    finishArea.classList.add("hidden");
+    quizArea.classList.remove("hidden");
+    nextQuestion();
+  };
+}
+
+let current = null;
+initUnitSelect();
+</script>
+</body>
+</html>

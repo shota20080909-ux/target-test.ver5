@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>語彙テスト（教師用）</title>
+<style>
+  body{font-family:sans-serif;text-align:center;background:#f5f5f5;padding:20px}
+  textarea{width:80%;height:150px;margin:10px;font-size:1em}
+  input,button,select{padding:10px;margin:5px;font-size:1em}
+  .btn{padding:10px 18px;background:#4CAF50;color:#fff;border:none;border-radius:5px;cursor:pointer}
+</style>
+</head>
+<body>
+  <h1>語彙テスト（教師用）</h1>
+  <p>形式：<code>日本語=英語</code> を1行ずつ（例：りんご=apple）</p>
+
+  <textarea id="wordInput" placeholder="りんご=apple&#10;本=book"></textarea><br>
+  <input id="unitName" placeholder="単元名を入力">
+  <button class="btn" onclick="saveUnit()">単元を保存</button>
+
+  <h3>登録済み単元</h3>
+  <select id="unitSelect" style="min-width:200px"></select>
+  <button onclick="deleteUnit()">削除</button>
+
+  <h3>生徒用ページ</h3>
+  <p><a href="student.html" target="_blank" style="padding:10px 18px;background:#2196F3;color:#fff;text-decoration:none;border-radius:5px">生徒用ページを開く</a></p>
+
+<script>
+function loadUnits(){
+  const units = JSON.parse(localStorage.getItem("units") || "{}");
+  const sel = document.getElementById("unitSelect");
+  sel.innerHTML = "";
+  Object.keys(units).forEach(name => {
+    const o = document.createElement("option");
+    o.value = name; o.textContent = name;
+    sel.appendChild(o);
+  });
+}
+
+function saveUnit(){
+  const name = document.getElementById("unitName").value.trim();
+  const text = document.getElementById("wordInput").value.trim();
+  if(!name || !text){ alert("単元名と単語リストを入力してください。"); return; }
+  const lines = text.split(/\r?\n/);
+  const obj = {};
+  lines.forEach(line=>{
+    const parts = line.split("=");
+    if(parts.length >= 2){
+      const jp = parts[0].trim();
+      const en = parts.slice(1).join("=").trim(); // = を意味に含める場合も安全
+      if(jp && en) obj[jp] = en;
+    }
+  });
+  const units = JSON.parse(localStorage.getItem("units") || "{}");
+  units[name] = obj;
+  localStorage.setItem("units", JSON.stringify(units));
+  alert(`単元「${name}」を保存しました。`);
+  document.getElementById("unitName").value = "";
+  document.getElementById("wordInput").value = "";
+  loadUnits();
+}
+
+function deleteUnit(){
+  const sel = document.getElementById("unitSelect");
+  const name = sel.value;
+  if(!name) return alert("削除する単元を選んでください。");
+  if(!confirm(`「${name}」を削除しますか？`)) return;
+  const units = JSON.parse(localStorage.getItem("units") || "{}");
+  delete units[name];
+  localStorage.setItem("units", JSON.stringify(units));
+  loadUnits();
+}
+
+loadUnits();
+</script>
+</body>
+</html>
